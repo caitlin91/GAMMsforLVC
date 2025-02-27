@@ -1,0 +1,26 @@
+---
+title: "GAMMs for LVC workshop"
+date: "28th February 2025"
+output: html_notebook
+---
+
+```{r message=FALSE, warning=FALSE, echo = FALSE}
+packages = c("dplyr","readr","tidyr", "rstatix", "ruler", "broom","mgcv", "itsadug", "magrittr",
+             "ggplot2", "ggforce","janitor",
+             "tidymv", "tidygam",
+             "doFuture","parallel",
+             "viridis","scales","colorspace","rcartocolor")
+invisible(lapply(packages, library, character.only = TRUE))
+options(pillar.sigfig = 4)
+```
+
+This is an [R Markdown](http://rmarkdown.rstudio.com) Notebook. When you execute code within the notebook, the results appear beneath the code. 
+
+When you save the notebook, an HTML file containing the code and output will be saved alongside it (click the *Preview* button or press *Ctrl+Shift+K* to preview the HTML file).
+
+The preview shows you a rendered HTML copy of the contents of the editor. Consequently, unlike *Knit*, *Preview* does not run any R code chunks. Instead, the output of the chunk when it was last run in the editor is displayed.
+
+```{r}
+
+```
+

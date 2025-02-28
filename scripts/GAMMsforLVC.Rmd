@@ -94,7 +94,7 @@ all_cores
 ```{r gamm1}
 F2.gamm1 <- bam(F2 ~
                   s(percent, k=4)
-               , data=data_gamm,method="fREML", discrete = TRUE, nthreads = all_cores)
+               , data=data_gamm, method="fREML", nthreads = all_cores)
 ```
 
 ```{r gamm1 summary}
@@ -196,20 +196,20 @@ F2.gamm4.p <- tidymv::predict_gam(F2.gamm4,
 
 ### Plotting the model
 ```{r gamm4 plot}
-F2.gamm4.plot <- ggplot(data = F2.gamm2.p,
+F2.gamm4.plot <- ggplot(data = F2.gamm4.p,
                         aes(
                           x=percent,
                           y=fit,
                           linecolour = borough_ord
                           ))+
-  # theme_Caitlin_gamm()+
+  theme_Caitlin_gamm()+
   geom_smooth_ci(borough_ord)+
   scale_y_continuous(position = "left",
                   limits = c(800,1600),
                   breaks = seq(0, 2000, 200)
                   )+
   NULL
-F2.gamm2.plot
+F2.gamm4.plot
 ```
 There's two more types of term I want to add. The first is called a tensor product interaction - duration may have an effect on the shapes of the trajectories so we want a non-linear interaction between duration and the smooths for (Soskuthy, 2017, p. 25). The second is a term to tie together the individual trajectories. The latter is the one that usually causes computer size/speed problems.
 
@@ -286,15 +286,15 @@ F2.gamm9.plot <- ggplot(data = F2.gamm9.p,
                         aes(
                           x=percent,
                           y=fit,
-                          linecolour = borough_ord
+                          linecolour = folSeg_ord
                           ))+
   theme_Caitlin_gamm()+
-  geom_smooth_ci(borough_ord)+
+  geom_smooth_ci(folSeg_ord)+
   scale_y_continuous(position = "left",
-                  limits = c(800,1600),
+                  limits = c(500,1600),
                   breaks = seq(0, 2000, 200)
                   )+
-  facet_wrap(~folSeg_ord)+
+  facet_wrap(~borough_ord)+
   NULL
 F2.gamm9.plot
 ```

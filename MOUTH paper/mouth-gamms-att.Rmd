@@ -1,0 +1,531 @@
+---
+title: "MOUTH analysis 2"
+author: "Caitlin Halfacre"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r message=FALSE, warning=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+packages = c("dplyr","readr","tidyr", "ggplot2", "rstatix", "ruler", "broom", "tidygam","tidymv", "mgcv", "itsadug",
+             "doFuture","parallel",
+             "ggforce","khroma","janitor","viridis","scales","colorspace","rcartocolor",
+             "brms","tidybayes","extraDistr","HDInterval")
+invisible(lapply(packages, library, character.only = TRUE))
+options(pillar.sigfig = 4)
+```
+
+# Data and Setup
+## Data
+```{r data, message=FALSE, warning=FALSE}
+my_seed = 1234
+
+data_M_long <- read_csv("../data/data_M_long_new.csv")
+
+data_M_gamm <- data_M_long %>%
+  filter(borough %in% c("Wigan","Bolton")) %>%
+  mutate_if(is.character,as.factor) %>% 
+  mutate(borough_ord = ordered(borough)) %>%
+  mutate(groupgeog_ord = ordered(groupgeog)) %>%
+  mutate(traj= factor(rowNumber_all)) %>%
+  mutate(ID = factor(ID)) %>%
+  mutate(lexSet_ord = ordered(lexSet)) %>%
+  mutate(sex_ord = ordered(sex)) %>%
+  mutate(age_ord = ordered(age)) %>%
+  mutate(word_ord = ordered(word)) %>%
+  # mutate(folplc_ord = factor(ordered(plt_place))) %>%
+  mutate(attitude_ord = ordered(Q2_attitude)) %>% 
+  droplevels() %>%
+  ungroup() %>%
+  mutate(age_bor = ordered(interaction(age, borough))) %>% 
+  mutate(att_age = ordered(interaction(Q2_attitude, age))) %>% 
+  mutate(style_med = ordered(interaction(style, medium))) %>% 
+  droplevels()
+
+contrasts(data_M_gamm$age_ord) <- "contr.treatment"
+contrasts(data_M_gamm$sex_ord) <- "contr.treatment"
+contrasts(data_M_gamm$borough_ord) <- "contr.treatment"
+# contrasts(data_M_gamm$folplc_ord) <- "contr.treatment"
+contrasts(data_M_gamm$attitude_ord) <- "contr.treatment"
+contrasts(data_M_gamm$att_age) <- "contr.treatment"
+contrasts(data_M_gamm$style_med) <- "contr.treatment"
+```
+
+```{r tables}
+data_M_gamm %>% distinct(traj, .keep_all = TRUE) %>% 
+  select(age) %>%
+  table()
+data_M_gamm %>% distinct(traj, .keep_all = TRUE) %>% 
+  select(style_med) %>%
+  table()
+data_M_gamm %>% distinct(traj, .keep_all = TRUE) %>% 
+  select(plt_place) %>%
+  table()
+data_M_gamm %>% distinct(ID, .keep_all = TRUE) %>% 
+  select(age,Q2_attitude) %>% 
+  table()
+
+data_M_gamm %>% drop_na(Q2_attitude) %>%
+  distinct(traj, .keep_all = TRUE) %>% 
+  select(Q2_attitude) %>% 
+  table()
+data_M_gamm %>% drop_na(Q2_attitude) %>%
+  distinct(traj, .keep_all = TRUE) %>% 
+  select(style_med) %>% 
+  table()
+```
+
+
+## themes
+```{r themes, message=FALSE, warning=FALSE}
+theme_Caitlin_transp <- function() {theme_bw(base_size = 12) %+replace%
+    theme(plot.background  = element_rect(fill = "transparent", colour = NA),
+          panel.background = element_rect(fill="gray90", colour=NA),
+          legend.background = element_rect(fill="transparent", colour=NA),
+          legend.key = element_rect(fill="transparent", colour=NA),
+          panel.grid.major = element_line(colour = "white", size = 0.2),
+          panel.grid.minor = element_line(colour = "grey98", size = 0.5))}
+
+theme_Caitlin <- function() {theme_bw(base_size = 12) %+replace%
+    theme(panel.grid.major = element_line(size = 0.5, colour = "grey90"),
+          panel.grid.minor = element_line(size = 0.2, colour = "grey70"))}
+
+
+theme_Caitlin_present <- function() {theme_bw(base_size = 22) %+replace%
+    theme(plot.background  = element_rect(fill = "transparent", colour = NA),
+          panel.background = element_rect(fill="gray90", colour=NA),
+          legend.background = element_rect(fill="transparent", colour=NA),
+          legend.key = element_rect(fill="transparent", colour=NA),
+          panel.grid.major = element_line(colour = "white", size = 0.2),
+          panel.grid.minor = element_line(colour = "grey98", size = 0.5))}
+
+theme_Caitlin_gamm <- function() {theme_bw(base_size = 16) %+replace%
+    theme(plot.background  = element_rect(fill = "transparent", colour = NA),
+          panel.background = element_rect(fill="transparent", colour=NA),
+          legend.background = element_rect(fill="transparent", colour=NA),
+          legend.key = element_rect(fill="transparent", colour=NA),
+          panel.grid.major = element_line(colour = "white", size = 0.2),
+          panel.grid.minor = element_line(colour = "grey98", size = 0.5))}
+
+theme_Caitlin_gammpresent <- function() {theme_bw(base_size = 18) %+replace%
+    theme(plot.background  = element_rect(fill = "transparent", colour = NA),
+          panel.background = element_rect(fill="white", colour=NA),
+          legend.background = element_rect(fill="transparent", colour=NA),
+          legend.key = element_rect(fill="transparent", colour=NA),
+          panel.grid.major = element_line(colour = "white", size = 0.2),
+          panel.grid.minor = element_line(colour = "grey98", size = 0.5))}
+
+safe_pal_3 <- carto_pal(3, "Safe")
+safe_pal_4 <- carto_pal(4, "Safe")
+safe_pal_5 <- carto_pal(5, "Safe")
+safe_pal_6 <- carto_pal(6, "Safe")
+safe_pal_7 <- carto_pal(7, "Safe")
+safe_pal_8 <- carto_pal(8, "Safe")
+safe_pal_9 <- carto_pal(9, "Safe")
+safe_pal_10 <- carto_pal(10, "Safe")
+safe_pal_11 <- carto_pal(11, "Safe")
+safe_pal_12 <- carto_pal(12, "Safe")
+```
+## Parallel
+```{r parallel, message=TRUE, warning=FALSE}
+# stopCluster(cl)
+all_cores <- availableCores()
+registerDoFuture()
+cl <- makeCluster(all_cores)
+plan(cluster, workers = cl)
+all_cores
+```
+# All boroughs
+```{r}
+gammall7.p <- read_csv("../HPC/F2-gamm7-p.csv")
+
+F2.gammall7.plot <- ggplot(data = gammall7.p,
+                        aes(
+                          x=percent,
+                          y=fit
+                          ,linecolour = borough_ord
+                          # ,alpha = borough_ord
+                          # ,fill = borough_ord
+                          # ,line = "solid"
+                        ))+
+  theme_Caitlin_gamm()+
+  geom_smooth_ci(borough_ord, ci_alpha = 0.04, ci_z = 0.66)+
+  scale_y_continuous(position = "right",
+                  limits = c(1000,2000),
+                  breaks = seq(0, 2000, 200)
+                  )+
+  # scale_linetype_manual(values=c("solid","dotted"), name = "Lexical Set", labels = c("HOPE","HOLE"))+
+  scale_colour_manual(values = safe_pal_10,name = "borough")+
+  scale_linetype(name = "borough")+
+  # scale_alpha_manual(values = c(1,0.25,0.25,0.25,0.25,0.25,0.25,0.25,0.25,1), guide = FALSE)+
+  facet_wrap(~age_ord)+
+  NULL
+F2.gammall7.plot
+ggsave("../figures/mouth-F2-gammall7-plot.png",F2.gammall7.plot,width = 8, height = 6)
+```
+
+
+```{r}
+# gammall7.p <- read_csv("../HPC/F2-gamm7-p.csv")
+
+F2.gammall7.plot <- ggplot(data = gammall7.p,
+                        aes(
+                          x=percent,
+                          y=fit
+                          ,linecolour = borough_ord
+                          # ,fill = borough_ord
+                          # ,line = "solid"
+                        ))+
+  theme_Caitlin_gammpresent()+
+  geom_smooth_ci(borough_ord, ci_alpha = 0.05, ci_z = 0.66)+
+  scale_y_continuous(position = "right",
+                  limits = c(1000,2000),
+                  breaks = seq(0, 2000, 200)
+                  )+
+  # scale_linetype_manual(values=c("solid","dotted"), name = "Lexical Set", labels = c("HOPE","HOLE"))+
+  scale_color_manual(values = safe_pal_10,name = "borough_ord")+
+  # scale_linetype_manual()+
+  facet_wrap(~age_ord)+
+  NULL
+F2.gammall7.plot
+```
+
+
+# Wigan Bolton Analysis
+## F2
+### by age
+```{r F2gamm7}
+#least model + ID + age + style/med + ti(dur) + traj
+
+#############
+F2.gamm7 <- bam(F2 ~
+                  # attitude_ord +
+                  age_ord +
+                  # att_age +
+                  # sex_ord +
+                  # fol_seg_ord +
+                  # style_med +
+                  s(percent, k=4) + #difference in height of traj
+                  # s(percent, by=attitude_ord, k=4) +
+                  s(percent, by=age_ord, k=4) +
+                  # s(percent, by=att_age, k = 4) +
+                  # s(percent, by=sex_ord, k=4) +
+                  # s(percent, by=fol_seg_ord, k = 4) +
+                  s(percent, by=style_med, k=4) +
+                  ti(percent, dur) + #interaction between shape and duration
+                  s(percent, ID, bs="fs", xt="cr",m=1,k=4) + #random smooth
+                  s(percent, traj, bs="fs", xt="cr",m=1,k=4) #random smooth
+                # s(percent, word, bs="fs", xt="cr",m=1,k=4) #random smooth
+                , data=data_M_gamm,method="fREML", nthreads = all_cores)
+```
+
+```{r F2 gamm7output}
+# check
+gam.check(F2.gamm7)
+# summary
+summary(F2.gamm7)
+```
+
+```{r}
+# compareML(F2.gamm6,F2.gamm7)
+```
+
+```{r predictions7}
+F2.gamm7.p <- tidymv::predict_gam(F2.gamm7
+                          , exclude_terms = list(
+                            "s(percent):style_medmap.in.person",
+                            "s(percent):style_medvaninterview.inperson",
+                            "s(percent):style_medmap.online",
+                            "s(percent):style_medvaninterview.online",
+                            "ti(percent,dur)",
+                            "s(percent,traj)",
+                            "s(percent,ID)"
+                          )
+                          ,
+                          values = list(
+                            # sex_ord = NULL
+                            # ,folplc_ord = NULL
+                            style_med = NULL
+                            ,ID = NULL
+                            ,traj = NULL
+                            ,dur = mean(data_M_gamm$dur)
+                          )
+                          )
+write_csv(F2.gamm7.p, "../data/F2-gamm7-p.csv")
+```
+
+###################################################
+```{r F2plot}
+#### plot ####
+# F2.gamm7.p <- read_csv("../data/F2-gamm7-p.csv")
+F2.gamm7.plot <- ggplot(data = F2.gamm7.p,
+                        aes(
+                          x=percent,
+                          y=fit
+                          ,linecolour = age_ord
+                          # ,fill = att_age
+                          # ,line = "solid"
+                        ))+
+  theme_Caitlin_gammpresent()+
+  geom_smooth_ci(age_ord,ci_alpha = 0.05, ci_z = 0.66)+
+  scale_y_continuous(limits = c(1000,2000),
+                  breaks = seq(0, 2000, 200)
+                  )+
+  # scale_linetype_manual(values=c("solid","dotted","dashed","solid","dotted","dashed","solid","dotted","dashed","solid","dotted"),
+  #                       name = "attitude",
+  #                       labels = c("0","1","-1","0","1","-1","0","1","-1"))+
+  # scale_color_manual(values=c("#88CCEE","#88CCEE","#CC6677","#CC6677","#CC6677", "#DDCC77","#DDCC77","#DDCC77", "#888888","#888888","#888888")
+  #                    ,name="Age"
+  #                    ,labels = c("18-25","18-25","26-45","26-45","26-45","46-55","46-55","46-55","66+","66+","66+")
+  #                    )+
+  # facet_wrap(~sex)+
+  NULL
+F2.gamm7.plot
+ggsave("../figures/M-WBo-F2-gamm7-plot.png",width=6,height=4)
+```
+
+### by attitude
+```{r F2gamm8}
+#least model + ID + age/att + style/med + ti(dur) + traj
+F2.gamm8 <- bam(F2 ~
+                  attitude_ord +
+                  # age_ord +
+                  # att_age +
+                  # sex_ord +
+                  # fol_seg_ord +
+                  # style_med +
+                  s(percent, k=4) + #difference in height of traj
+                  s(percent, by=attitude_ord, k=4) +
+                  # s(percent, by=age_ord, k=4) +
+                  # s(percent, by=att_age, k = 4) +
+                  # s(percent, by=sex_ord, k=4) +
+                  # s(percent, by=fol_seg_ord, k = 4) +
+                  s(percent, by=style_med, k=4) +
+                  ti(percent, dur) + #interaction between shape and duration
+                  s(percent, ID, bs="fs", xt="cr",m=1,k=4) + #random smooth
+                  s(percent, traj, bs="fs", xt="cr",m=1,k=4) #random smooth
+                # s(percent, word, bs="fs", xt="cr",m=1,k=4) #random smooth
+                , data=data_M_gamm,method="fREML", nthreads = all_cores)
+```
+
+```{r F2 gamm8output}
+# check
+gam.check(F2.gamm8)
+# summary
+summary(F2.gamm8)
+```
+
+
+```{r predictions8}
+F2.gamm8.p <- tidymv::predict_gam(F2.gamm8
+                          , exclude_terms = list(
+                            "s(percent):style_medmap.in.person",
+                            "s(percent):style_medvaninterview.inperson",
+                            "s(percent):style_medmap.online",
+                            "s(percent):style_medvaninterview.online",
+                            "ti(percent,dur)",
+                            "s(percent,traj)",
+                            "s(percent,ID)"
+                          )
+                          ,
+                          values = list(
+                            # sex_ord = NULL
+                            # ,folplc_ord = NULL
+                            style_med = NULL
+                            ,ID = NULL
+                            ,traj = NULL
+                            ,dur = mean(data_M_gamm$dur)
+                          )
+                          )
+write_csv(F2.gamm8.p, "../data/F2-gamm8-p.csv")
+```
+
+##################
+```{r F28plot}
+#### plot ####
+# F2.gamm8.p <- read_csv("../data/F2-gamm8-p.csv")
+F2.gamm8.plot <- ggplot(data = F2.gamm8.p,
+                        aes(
+                          x=percent,
+                          y=fit
+                          ,linecolour = attitude_ord
+                          # ,fill = att_age
+                          # ,line = "solid"
+                        ))+
+  theme_Caitlin_gamm()+
+  geom_smooth_ci(attitude_ord,ci_alpha = 0.05, ci_z = 0.66)+
+  scale_y_continuous(limits = c(1000,2000),
+                  breaks = seq(0, 2000, 200)
+                  )+
+  # scale_linetype_manual(values=c("solid","dotted","dashed","solid","dotted","dashed","solid","dotted","dashed","solid","dotted"),
+  #                       name = "attitude",
+  #                       labels = c("0","1","-1","0","1","-1","0","1","-1"))+
+  scale_color_manual(values = c("#88CCEE","#888888","#CC6677"), name = "attitude towards\n'Greater Manchester'")+
+  scale_linetype(name = "attitude towards\n'Greater Manchester'") +
+  #                    ,name="Age"
+  #                    ,labels = c("18-25","18-25","26-45","26-45","26-45","46-55","46-55","46-55","66+","66+","66+")
+  #                    )+
+  # facet_wrap(~style_med)+
+  NULL
+F2.gamm8.plot
+ggsave("../figures/M-WBo-F2-gamm8-plot.png",width=6,height=4)
+```
+## neutral speakers only
+```{r F2gamm9}
+#least model + ID + age + style/med + ti(dur) + traj - neutral speakers only
+data_M_gamm_neut <- data_M_gamm %>% filter(Q2_attitude == 0)
+F2.gamm9 <- bam(F2 ~
+                  # attitude_ord +
+                  age_ord +
+                  # att_age +
+                  # sex_ord +
+                  # fol_seg_ord +
+                  # style_med +
+                  s(percent, k=4) + #difference in height of traj
+                  # s(percent, by=attitude_ord, k=4) +
+                  s(percent, by=age_ord, k=4) +
+                  # s(percent, by=att_age, k = 4) +
+                  # s(percent, by=sex_ord, k=4) +
+                  # s(percent, by=fol_seg_ord, k = 4) +
+                  s(percent, by=style_med, k=4) +
+                  ti(percent, dur) + #interaction between shape and duration
+                  s(percent, ID, bs="fs", xt="cr",m=1,k=4) + #random smooth
+                  s(percent, traj, bs="fs", xt="cr",m=1,k=4) #random smooth
+                # s(percent, word, bs="fs", xt="cr",m=1,k=4) #random smooth
+                , data=data_M_gamm_neut,method="fREML", nthreads = all_cores)
+```
+
+```{r F2 gamm9output}
+# check
+gam.check(F2.gamm9)
+# summary
+summary(F2.gamm9)
+```
+
+```{r predictions9}
+F2.gamm9.p <- tidymv::predict_gam(F2.gamm9
+                          , exclude_terms = list(
+                            "s(percent):style_medmap.in.person",
+                            "s(percent):style_medvaninterview.inperson",
+                            "s(percent):style_medvaninterview.online",
+                            "ti(percent,dur)",
+                            "s(percent,traj)",
+                            "s(percent,ID)"
+                          )
+                          ,
+                          values = list(
+                            # sex_ord = NULL
+                            # ,folplc_ord = NULL
+                            style_med = NULL
+                            ,ID = NULL
+                            ,traj = NULL
+                            ,dur = mean(data_M_gamm$dur)
+                          )
+                          )
+write_csv(F2.gamm9.p, "../data/F2-gamm9-p.csv")
+```
+
+
+```{r F29plot}
+#### plot ####
+F2.gamm9.p <- read_csv("../data/F2-gamm9-p.csv")
+F2.gamm9.plot <- ggplot(data = F2.gamm9.p,
+                        aes(
+                          x=percent,
+                          y=fit
+                          ,linecolour = age_ord
+                          # ,fill = att_age
+                          # ,line = "solid"
+                        ))+
+  theme_Caitlin_gamm()+
+  geom_smooth_ci(age_ord,ci_alpha = 0.05, ci_z = 0.66)+
+  scale_y_continuous(limits = c(1000,2000),
+                  breaks = seq(0, 2000, 200)
+                  )+
+  # scale_linetype_manual(values=c("solid","dotted","dashed","solid","dotted","dashed","solid","dotted","dashed","solid","dotted"),
+  #                       name = "attitude",
+  #                       labels = c("0","1","-1","0","1","-1","0","1","-1"))+
+  # scale_color_manual(values=c("#88CCEE","#88CCEE","#CC6677","#CC6677","#CC6677", "#DDCC77","#DDCC77","#DDCC77", "#888888","#888888","#888888")
+  #                    ,name="Age"
+  #                    ,labels = c("18-25","18-25","26-45","26-45","26-45","46-55","46-55","46-55","66+","66+","66+")
+  #                    )+
+  # facet_wrap(~style_med)+
+  NULL
+F2.gamm9.plot
+ggsave("../figures/M-WBo-F2-gamm9-plot.png",width=6,height=4)
+```
+
+
+# Age and attitude
+
+```{r}
+data_norm_single <- read_csv("../data/data-norm-single.csv")
+data_att <- data_norm_single %>% 
+  ungroup() %>% 
+  drop_na(groupNCS) %>% 
+  mutate(lexSet = factor(lexSet, levels = c("PRICE",  "FLEECE",   "NEAR",  "FACE",  "SQUARE",  "TRAP", "LOT",   "THOUGHT", "CHOICE", "MOUTH", "BATH", "PALM","GOAT",  "FOOT","CURE", "NURSE","schwa",  "GOOSE", "STRUT", "DRESS",  "KIT"))) %>% 
+  mutate(borough = factor(borough_grewup, levels =c("Wigan", "Bolton","Bury","Rochdale","Oldham","Salford","Manchester","Tameside","Trafford","Stockport"))) %>% 
+  mutate(Q2_attitude_fac = factor(Q2_attitude, levels = c("1","0","-1"))) %>%
+  mutate(Q2_attitude_ord = as.ordered(Q2_attitude_fac)) %>% 
+  mutate(justManchester = replace_na(justManchester,"n")) %>% 
+  mutate(justManchester = factor(justManchester, c("n","x"),c("n","y"))) %>% 
+  mutate(justManchester = factor(justManchester, levels = c("n","y"))) %>% 
+  ungroup() %>% 
+  filter(borough %in% c("Wigan","Bolton"))
+```
+
+```{r}
+att.ordbmod1 <- brm(Q2_attitude_ord ~ 1 + age,
+                     data = data_att,
+                     family = cumulative("probit"),
+                     file = "../models/WBo-att-ordbmod1"
+                     )
+summary(att.ordbmod1)
+```
+
+```{r}
+# conditional_effects(att.ordbmod1,
+#                     effects = "age",
+#                     prob = 0.6,
+#                     categorical = TRUE)
+
+data_CEff <- conditional_effects(att.ordbmod1, effects = "age", prob = 0.66, categorical =TRUE)[[1]]
+
+CEffplot <- 
+  # plot(conditional_effects(att.ordbmod1, effects = "age", prob = 0.66, categorical =TRUE), plot=FALSE)[[1]] +
+  ggplot(data_CEff,
+         aes(x = age,
+             y = estimate__,
+             colour = effect2__,
+             shape = effect2__))+
+  geom_point(size = 4.5)+
+  geom_errorbar(aes(ymin=lower__, ymax=upper__), width=.2)+
+  theme_Caitlin()+
+  # geom_line(group = "cats_")+
+  # geom_smooth(group = Q2_attitude_ord)+
+  # geom_jitter(data_FS,
+              # aes(x=lexSet,y=F1_norm))+
+  scale_y_continuous(limits = c(0,1), breaks = seq(0,1,0.2), name = "Probability")+
+  # ggtitle("Bayesian model of Attitude to 'Greater Manchester'")+
+  scale_colour_manual(values = c("#197fb3",
+                                 "#737373",
+                                 "#bf4055"))+
+  # scale_shape_manual(values = c(3,
+  #                               4,
+  #                               8)) +
+  # facet_wrap(~borough) +
+  guides(colour=guide_legend("attitude to \n'Greater Manchester'"),
+         # fill=guide_legend("attitude to \n'Greater Manchester'"),
+         shape=guide_legend("attitude to \n'Greater Manchester'"))+
+  NULL
+CEffplot
+ggsave("../figures/WBo-attage-bmodord.png",CEffplot,width=9,height=6)
+```
+
+```{r}
+data_att %>% distinct(ID, .keep_all = TRUE) %>% 
+  select(age) %>% 
+  table()
+```
+
